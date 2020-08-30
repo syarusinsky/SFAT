@@ -1,6 +1,12 @@
 #ifndef FAT16_ENTRY_HPP
 #define FAT16_ENTRY_HPP
 
+/**************************************************************************
+ * The Fat16Entry class defines a directory entry for a FAT16 file
+ * system. It also provides function for determining what type of entry
+ * it is.
+**************************************************************************/
+
 #include <stdint.h>
 
 // FAT16 entry offsets and sizes
@@ -19,12 +25,6 @@
 #define FAT16_STARTING_CLUSTER_NUM_SIZE 	2
 #define FAT16_FILE_SIZE_IN_BYTES_OFFSET 	0x1C
 #define FAT16_FILE_SIZE_IN_BYTES_SIZE 		4
-
-/**************************************************************************
- * The Fat16Entry class defines a directory entry for a FAT16 file
- * system. It also provides function for determining what type of entry
- * it is.
-**************************************************************************/
 
 struct Fat16Time
 {
