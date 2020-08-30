@@ -235,7 +235,7 @@ void Fat16Entry::createFilenameDisplayStringHelper (unsigned int startCharacter)
 		// fill the filename part
 		for ( unsigned int character = endOfFilename; character < FAT16_FILENAME_SIZE; character++ )
 		{
-			if ( m_Filename[character] = ' ' )
+			if ( m_Filename[character] == ' ' )
 			{
 				break;
 			}
@@ -244,20 +244,23 @@ void Fat16Entry::createFilenameDisplayStringHelper (unsigned int startCharacter)
 			endOfFilename++;
 		}
 
-		// add . for extension
-		m_FilenameWithExtension[endOfFilename] = '.';
-		endOfFilename++;
-
-		// fill the extension part
-		for ( unsigned int character = 0; character < FAT16_EXTENSION_SIZE; character++ )
+		if ( ! this->isSubdirectory() )
 		{
-			if ( m_Extension[character] = ' ' )
-			{
-				break;
-			}
-
-			m_FilenameWithExtension[endOfFilename] = m_Extension[character];
+			// add . for extension
+			m_FilenameWithExtension[endOfFilename] = '.';
 			endOfFilename++;
+
+			// fill the extension part
+			for ( unsigned int character = 0; character < FAT16_EXTENSION_SIZE; character++ )
+			{
+				if ( m_Extension[character] == ' ' )
+				{
+					break;
+				}
+
+				m_FilenameWithExtension[endOfFilename] = m_Extension[character];
+				endOfFilename++;
+			}
 		}
 
 		// add string terminator
