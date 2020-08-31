@@ -101,7 +101,7 @@ uint32_t Fat16Entry::getFileSizeInBytes() const
 
 bool Fat16Entry::isUnusedEntry() const
 {
-	if ( m_Filename[0] == 0x00 )
+	if ( m_Filename[0] == static_cast<char>(0x00) )
 	{
 		return true;
 	}
@@ -111,7 +111,7 @@ bool Fat16Entry::isUnusedEntry() const
 
 bool Fat16Entry::isDeletedEntry() const
 {
-	if ( m_Filename[0] == 0xE5 )
+	if ( m_Filename[0] == static_cast<char>(0xE5) )
 	{
 		return true;
 	}
@@ -121,7 +121,7 @@ bool Fat16Entry::isDeletedEntry() const
 
 bool Fat16Entry::isDirectory() const
 {
-	if ( m_Filename[0] == 0x2E )
+	if ( m_Filename[0] == static_cast<char>(0x2E) )
 	{
 		return true;
 	}
@@ -132,7 +132,7 @@ bool Fat16Entry::isDirectory() const
 bool Fat16Entry::isRootDirectory() const
 {
 	// TODO is this right?
-	if ( m_Filename[0] == 0x2E && m_StartingClusterNum == 0 )
+	if ( m_Filename[0] == static_cast<char>(0x2E) && m_StartingClusterNum == 0 )
 	{
 		return true;
 	}
@@ -142,7 +142,7 @@ bool Fat16Entry::isRootDirectory() const
 
 bool Fat16Entry::clusterNumIsParentDirectory() const
 {
-	if ( m_Filename[0] == 0x2E && m_Filename[1] == 0x2E )
+	if ( m_Filename[0] == static_cast<char>(0x2E) && m_Filename[1] == static_cast<char>(0x2E) )
 	{
 		return true;
 	}
