@@ -1,5 +1,5 @@
-#ifndef BOOT_SECTOR_HPP
-#define BOOT_SECTOR_HPP
+#ifndef BOOTSECTOR_HPP
+#define BOOTSECTOR_HPP
 
 /**************************************************************************
  * The BootSector class defines a boot sector entry, as well as functions
@@ -151,4 +151,4 @@ class BootSector
 		uint16_t 	m_BackupSectorNum;
 };
 
-#endif // BOOT_SECTOR_HPP
+#endif // BOOTSECTOR_HPP

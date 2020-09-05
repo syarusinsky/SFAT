@@ -1,5 +1,5 @@
-#ifndef PARTITION_TABLE_HPP
-#define PARTITION_TABLE_HPP
+#ifndef PARTITIONTABLE_HPP
+#define PARTITIONTABLE_HPP
 
 /**************************************************************************
  * The PartitionTable class defines a partition entry in an MBR partition
@@ -47,4 +47,4 @@ class PartitionTable
 		uint32_t m_PartitionSize;
 };
 
-#endif // PARTITION_TABLE_HPP
+#endif // PARTITIONTABLE_HPP

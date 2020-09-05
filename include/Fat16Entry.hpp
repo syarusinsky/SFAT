@@ -1,5 +1,5 @@
-#ifndef FAT16_ENTRY_HPP
-#define FAT16_ENTRY_HPP
+#ifndef FAT16ENTRY_HPP
+#define FAT16ENTRY_HPP
 
 /**************************************************************************
  * The Fat16Entry class defines a directory entry for a FAT16 file
@@ -89,4 +89,4 @@ class Fat16Entry
 		void createFilenameDisplayStringHelper (unsigned int startCharacter);
 };
 
-#endif // FAT16_ENTRY_HPP
+#endif // FAT16ENTRY_HPP
