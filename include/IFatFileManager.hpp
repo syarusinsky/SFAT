@@ -7,13 +7,28 @@
  * writing data.
 **************************************************************************/
 
+#include "IStorageMedia.hpp"
+#include "BootSector.hpp"
+
+#include <vector>
+
+class PartitionTable;
+
 class IFatFileManager
 {
 	public:
-		IFatFileManager();
-		~IFatFileManager();
+		IFatFileManager (IStorageMedia& storageMedia);
+		virtual ~IFatFileManager();
 
-	private:
+		bool isValidFatFileSystem();
+
+		virtual void changePartition (unsigned int partitionNum);
+
+	protected:
+		IStorageMedia& 			m_StorageMedia;
+		unsigned int 			m_ActivePartitionNum;
+		std::vector<PartitionTable> 	m_PartitionTables;
+		BootSector* 			m_ActiveBootSector;
 };
 
 #endif // IFATFILEMANAGER_HPP

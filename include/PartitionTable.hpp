@@ -8,6 +8,8 @@
 
 #include <stdint.h>
 
+#define PARTITION_TABLE_OFFSET 0x1BE
+
 enum class PartitionType : uint8_t
 {
 	EMPTY 			= 0,
