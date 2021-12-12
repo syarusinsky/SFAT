@@ -24,6 +24,10 @@ class IFatFileManager
 
 		virtual void changePartition (unsigned int partitionNum);
 
+		BootSector* getActiveBootSector() { return m_ActiveBootSector; }
+
+		std::vector<PartitionTable>* getPartitionTables() { return &m_PartitionTables; }
+
 	protected:
 		IStorageMedia& 			m_StorageMedia;
 		unsigned int 			m_ActivePartitionNum;

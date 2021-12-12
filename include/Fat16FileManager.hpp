@@ -15,25 +15,39 @@ class Fat16FileManager : public IFatFileManager
 		Fat16FileManager (IStorageMedia& storageMedia);
 		~Fat16FileManager() override;
 
-		// This function places the 'cursor' on a given file or subdirectory and returns the selected entry. If a subdirectory is selected
+		// This function places the 'cursor' on a given directory and returns the selected entry. If a subdirectory is selected
 		// the current directory entries are updated.
 		Fat16Entry selectEntry (unsigned int entryNum);
 
+		// Returns false if file is already deleted or should not be able to be deleted, true if successful
+		bool deleteEntry (unsigned int entryNum);
+
+		// The order of file writing operations are createEntry -> writeToEntry(xHoweverManyTimes) -> finalizeEntry()
+		// returns false if no space available
+		bool createEntry (Fat16Entry& entry);
+		// returns false if no space available
+		bool writeToEntry (Fat16Entry& entry, const SharedData<uint8_t>& data);
+		// returns false if there are no available entries in directory, true if successful
+		bool finalizeEntry(Fat16Entry& entry);
+
 		std::vector<Fat16Entry>& getCurrentDirectoryEntries() { return m_CurrentDirectoryEntries; }
 
-		SharedData<uint8_t> getSelectedFileNextSector();
+		// The order of file reading operations are readEntry -> getSelectedFileNextSector(xHoweverManyTimes)
+		// returns true if entry is readable file and read process has begun, false if fail
+		bool readEntry (Fat16Entry& entry);
+		SharedData<uint8_t> getSelectedFileNextSector (Fat16Entry& entry);
 
 		void changePartition (unsigned int partitionNum) override;
 
 	private:
 		unsigned int 			m_FatOffset;
+		SharedData<uint8_t> 		m_FatCached;
 		unsigned int 			m_RootDirectoryOffset;
 		unsigned int 			m_DataOffset;
-		unsigned int 			m_CurrentOffset;
+		unsigned int 			m_CurrentDirOffset;
 		std::vector<Fat16Entry> 	m_CurrentDirectoryEntries;
-		bool 				m_FileTransferInProgress;
-		unsigned int 			m_CurrentFileSector;
-		unsigned int 			m_CurrentFileCluster;
+
+		void endFileTransfer (Fat16Entry& entry);
 };
 
 #endif // FAT16FILEMANAGER_HPP
