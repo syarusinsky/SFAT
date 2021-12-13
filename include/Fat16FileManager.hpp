@@ -23,10 +23,13 @@ class Fat16FileManager : public IFatFileManager
 		bool deleteEntry (unsigned int entryNum);
 
 		// The order of file writing operations are createEntry -> writeToEntry(xHoweverManyTimes) -> finalizeEntry()
+		// NOTE: CAN CURRENTLY ONLY WRITE TO ONE FILE AT A TIME DUE TO FAT CORRUPTION CONCERNS
 		// returns false if no space available
 		bool createEntry (Fat16Entry& entry);
-		// returns false if no space available
+		// writes in multiples of sector sizes, returns false if data doesn't even fit into sectors or there is no more free space
 		bool writeToEntry (Fat16Entry& entry, const SharedData<uint8_t>& data);
+		// writes data less than a sector size and finalizes the entry, returns false if there is no more free space
+		bool flushToEntry (Fat16Entry& entry, const SharedData<uint8_t>& data);
 		// returns false if there are no available entries in directory, true if successful
 		bool finalizeEntry(Fat16Entry& entry);
 
@@ -46,6 +49,8 @@ class Fat16FileManager : public IFatFileManager
 		unsigned int 			m_DataOffset;
 		unsigned int 			m_CurrentDirOffset;
 		std::vector<Fat16Entry> 	m_CurrentDirectoryEntries;
+
+		bool writeToEntry (Fat16Entry& entry, const SharedData<uint8_t>& data, bool flush);
 
 		void endFileTransfer (Fat16Entry& entry);
 };

@@ -301,6 +301,20 @@ bool Fat16FileManager::createEntry (Fat16Entry& entry)
 
 bool Fat16FileManager::writeToEntry (Fat16Entry& entry, const SharedData<uint8_t>& data)
 {
+	return this->writeToEntry( entry, data, false );
+}
+
+bool Fat16FileManager::flushToEntry (Fat16Entry& entry, const SharedData<uint8_t>& data)
+{
+	return this->writeToEntry( entry, data, true );
+}
+
+bool Fat16FileManager::writeToEntry (Fat16Entry& entry, const SharedData<uint8_t>& data, bool flush)
+{
+	// if data doesn't fit into sector size and not currently 'flushing', return false
+	bool dataDoesntFit = ( data.getSizeInBytes() % m_ActiveBootSector->getSectorSizeInBytes() != 0 ) ? true : false;
+	if ( dataDoesntFit && ! flush ) return false;
+
 	bool& fileTransferInProgress = entry.getFileTransferInProgressFlagRef();
 	unsigned int& currentFileSector = entry.getCurrentFileSectorRef();
 	unsigned int& currentFileCluster = entry.getCurrentFileClusterRef();
@@ -331,7 +345,9 @@ bool Fat16FileManager::writeToEntry (Fat16Entry& entry, const SharedData<uint8_t
 			// look for next free cluster (first two are reserved)
 			bool foundFreeCluster = false;
 			unsigned int numClustersInFat = (m_ActiveBootSector->getNumSectorsPerFat() * m_ActiveBootSector->getSectorSizeInBytes()) / 2;
-			for ( unsigned int clusterNum = 2; clusterNum < numClustersInFat - 2; clusterNum++ )
+			std::vector<Fat16ClusterMod>& clusterModVec = entry.getClustersToModifyRef();
+
+			for ( unsigned int clusterNum = clusterModVec.back().clusterNum + 1; clusterNum < numClustersInFat - 2; clusterNum++ )
 			{
 				uint8_t* clusterValByte1 = &m_FatCached[sizeof(uint16_t) * clusterNum];
 				uint8_t* clusterValByte2 = &m_FatCached[sizeof(uint16_t) * clusterNum + 1];
@@ -339,29 +355,31 @@ bool Fat16FileManager::writeToEntry (Fat16Entry& entry, const SharedData<uint8_t
 
 				if ( clusterVal == FAT16_FREE_CLUSTER )
 				{
-					std::vector<Fat16ClusterMod>& clusterModVec = entry.getClustersToModifyRef();
 
 					// set old cluster to new free cluster
 					Fat16ClusterMod& oldClusterMod = clusterModVec.back();
-					oldClusterMod.clusterNewVal = clusterVal;
+					oldClusterMod.clusterNewVal = clusterNum;
 
 					// set new cluster to end of file
-					Fat16ClusterMod newClusterMod = { clusterVal, FAT16_END_OF_FILE_CLUSTER };
+					Fat16ClusterMod newClusterMod = { static_cast<uint16_t>(clusterNum), FAT16_END_OF_FILE_CLUSTER };
 					clusterModVec.push_back( newClusterMod );
 
 					// set entry values
 					currentFileSector = 0;
-					currentFileCluster = clusterVal;
+					currentFileCluster = clusterNum;
 					currentFileOffset = m_DataOffset + ( (currentFileCluster - 2) *
 							m_ActiveBootSector->getNumSectorsPerCluster() * m_ActiveBootSector->getSectorSizeInBytes() );
 
 					foundFreeCluster = true;;
+
+					break;
 				}
 			}
 
 			if ( ! foundFreeCluster )
 			{
 				fileTransferInProgress = false;
+				this->endFileTransfer( entry );
 
 				return false;
 			}
@@ -375,6 +393,11 @@ bool Fat16FileManager::writeToEntry (Fat16Entry& entry, const SharedData<uint8_t
 		entry.setFileSizeInBytes( oldFileSize + writeToNumBytes );
 
 		m_StorageMedia.writeToMedia( data, writeOffset );
+	}
+
+	if ( flush )
+	{
+		return this->finalizeEntry( entry );
 	}
 
 	return true;
