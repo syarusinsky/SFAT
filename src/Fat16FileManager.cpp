@@ -9,7 +9,8 @@ Fat16FileManager::Fat16FileManager (IStorageMedia& storageMedia) :
 	m_RootDirectoryOffset( 0 ),
 	m_DataOffset( 0 ),
 	m_CurrentDirOffset( 0 ),
-	m_CurrentDirectoryEntries()
+	m_CurrentDirectoryEntries(),
+	m_PendingClustersToModify()
 {
 	if ( this->isValidFatFileSystem() )
 	{
@@ -200,7 +201,6 @@ SharedData<uint8_t> Fat16FileManager::getSelectedFileNextSector (Fat16Entry& ent
 	bool& fileTransferInProgress = entry.getFileTransferInProgressFlagRef();
 	unsigned int& currentFileSector = entry.getCurrentFileSectorRef();
 	unsigned int& currentFileCluster = entry.getCurrentFileClusterRef();
-	unsigned int& currentDirOffset = entry.getCurrentDirOffsetRef();
 	unsigned int& currentFileOffset = entry.getCurrentFileOffsetRef();
 
 	if ( fileTransferInProgress )
@@ -275,7 +275,7 @@ bool Fat16FileManager::createEntry (Fat16Entry& entry)
 		uint8_t* clusterValByte2 = &m_FatCached[sizeof(uint16_t) * clusterNum + 1];
 		uint16_t clusterVal = *clusterValByte1 | ( *clusterValByte2 << 8 );
 
-		if ( clusterVal == FAT16_FREE_CLUSTER )
+		if ( ! m_PendingClustersToModify.count(clusterNum) && clusterVal == FAT16_FREE_CLUSTER )
 		{
 			// set cluster to end of file cluster
 			std::vector<Fat16ClusterMod>& clustersToModify = entry.getClustersToModifyRef();
@@ -291,6 +291,9 @@ bool Fat16FileManager::createEntry (Fat16Entry& entry)
 							m_ActiveBootSector->getNumSectorsPerCluster() * m_ActiveBootSector->getSectorSizeInBytes() );
 			entry.setStartingClusterNum( clusterNum );
 			entry.setFileSizeInBytes( 0 );
+
+			// add this cluster to the pending modified clusters set
+			m_PendingClustersToModify.insert( clusterNum );
 
 			return true;
 		}
@@ -353,7 +356,7 @@ bool Fat16FileManager::writeToEntry (Fat16Entry& entry, const SharedData<uint8_t
 				uint8_t* clusterValByte2 = &m_FatCached[sizeof(uint16_t) * clusterNum + 1];
 				uint16_t clusterVal = *clusterValByte1 | ( *clusterValByte2 << 8 );
 
-				if ( clusterVal == FAT16_FREE_CLUSTER )
+				if ( ! m_PendingClustersToModify.count(clusterNum) && clusterVal == FAT16_FREE_CLUSTER )
 				{
 
 					// set old cluster to new free cluster
@@ -369,6 +372,9 @@ bool Fat16FileManager::writeToEntry (Fat16Entry& entry, const SharedData<uint8_t
 					currentFileCluster = clusterNum;
 					currentFileOffset = m_DataOffset + ( (currentFileCluster - 2) *
 							m_ActiveBootSector->getNumSectorsPerCluster() * m_ActiveBootSector->getSectorSizeInBytes() );
+
+					// add this cluster to the pending modified clusters set
+					m_PendingClustersToModify.insert( clusterNum );
 
 					foundFreeCluster = true;;
 
@@ -491,5 +497,12 @@ void Fat16FileManager::endFileTransfer (Fat16Entry& entry)
 	entry.getCurrentFileClusterRef() = 0;
 	entry.getCurrentDirOffsetRef() = 0;
 	entry.getCurrentFileOffsetRef() = 0;
+
+	// clear from pending clusters to modify
+	for ( const Fat16ClusterMod& clusterMod : entry.getClustersToModifyRef() )
+	{
+		m_PendingClustersToModify.erase( clusterMod.clusterNum );
+	}
+
 	entry.getClustersToModifyRef().clear();
 }

@@ -9,6 +9,8 @@
 #include "IFatFileManager.hpp"
 #include "Fat16Entry.hpp"
 
+#include <set>
+
 class Fat16FileManager : public IFatFileManager
 {
 	public:
@@ -23,7 +25,6 @@ class Fat16FileManager : public IFatFileManager
 		bool deleteEntry (unsigned int entryNum);
 
 		// The order of file writing operations are createEntry -> writeToEntry(xHoweverManyTimes) -> finalizeEntry()
-		// NOTE: CAN CURRENTLY ONLY WRITE TO ONE FILE AT A TIME DUE TO FAT CORRUPTION CONCERNS
 		// returns false if no space available
 		bool createEntry (Fat16Entry& entry);
 		// writes in multiples of sector sizes, returns false if data doesn't even fit into sectors or there is no more free space
@@ -49,6 +50,8 @@ class Fat16FileManager : public IFatFileManager
 		unsigned int 			m_DataOffset;
 		unsigned int 			m_CurrentDirOffset;
 		std::vector<Fat16Entry> 	m_CurrentDirectoryEntries;
+
+		std::set<uint16_t> 		m_PendingClustersToModify;
 
 		bool writeToEntry (Fat16Entry& entry, const SharedData<uint8_t>& data, bool flush);
 
