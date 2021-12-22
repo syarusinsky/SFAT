@@ -20,6 +20,7 @@ Fat16Entry::Fat16Entry (uint8_t* offset) :
 	m_CurrentFileCluster( 0 ),
 	m_CurrentDirOffset( 0 ),
 	m_CurrentFileOffset( 0 ),
+	m_NumBytesRead( 0 ),
 	m_ClustersToModify()
 {
 	for ( unsigned int byte = 0; byte < FAT16_ENTRY_SIZE; byte++ )

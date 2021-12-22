@@ -104,6 +104,7 @@ class Fat16Entry
 		unsigned int& getCurrentFileClusterRef() { return m_CurrentFileCluster; }
 		unsigned int& getCurrentDirOffsetRef() { return m_CurrentDirOffset; }
 		unsigned int& getCurrentFileOffsetRef() { return m_CurrentFileOffset; }
+		unsigned int& getNumBytesReadRef() { return m_NumBytesRead; }
 		std::vector<Fat16ClusterMod>& getClustersToModifyRef() { return m_ClustersToModify; }
 
 	private:
@@ -124,6 +125,7 @@ class Fat16Entry
 		unsigned int 	m_CurrentFileCluster;
 		unsigned int 	m_CurrentDirOffset;
 		unsigned int 	m_CurrentFileOffset;
+		unsigned int 	m_NumBytesRead = 0;
 
 		std::vector<Fat16ClusterMod> 	m_ClustersToModify;
 

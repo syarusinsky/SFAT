@@ -202,12 +202,15 @@ SharedData<uint8_t> Fat16FileManager::getSelectedFileNextSector (Fat16Entry& ent
 	unsigned int& currentFileSector = entry.getCurrentFileSectorRef();
 	unsigned int& currentFileCluster = entry.getCurrentFileClusterRef();
 	unsigned int& currentFileOffset = entry.getCurrentFileOffsetRef();
+	unsigned int& numBytesRead = entry.getNumBytesReadRef();
 
 	if ( fileTransferInProgress )
 	{
 		unsigned int returnOffset = currentFileOffset;
 
 		currentFileSector++;
+		numBytesRead += m_ActiveBootSector->getSectorSizeInBytes();
+
 		if ( currentFileSector == m_ActiveBootSector->getNumSectorsPerCluster() )
 		{
 			currentFileSector = 0;
@@ -226,6 +229,10 @@ SharedData<uint8_t> Fat16FileManager::getSelectedFileNextSector (Fat16Entry& ent
 			{
 				this->endFileTransfer( entry );
 			}
+		}
+		else if ( numBytesRead >= entry.getFileSizeInBytes() )
+		{
+			this->endFileTransfer( entry );
 		}
 
 		currentFileOffset = m_DataOffset + ( (currentFileCluster - 2) *
@@ -398,7 +405,7 @@ bool Fat16FileManager::writeToEntry (Fat16Entry& entry, const SharedData<uint8_t
 		unsigned int oldFileSize = entry.getFileSizeInBytes();
 		entry.setFileSizeInBytes( oldFileSize + writeToNumBytes );
 
-		m_StorageMedia.writeToMedia( data, writeOffset );
+		m_StorageMedia.writeToMedia( dataToWrite, writeOffset );
 	}
 
 	if ( flush )
@@ -494,9 +501,9 @@ void Fat16FileManager::endFileTransfer (Fat16Entry& entry)
 	// clear any clusters that were to be modified in the fat and end any previous write or read process
 	entry.getFileTransferInProgressFlagRef() = false;
 	entry.getCurrentFileSectorRef() = 0;
-	entry.getCurrentFileClusterRef() = 0;
-	entry.getCurrentDirOffsetRef() = 0;
+	entry.getCurrentFileClusterRef() = entry.getStartingClusterNum();
 	entry.getCurrentFileOffsetRef() = 0;
+	entry.getNumBytesReadRef() = 0;
 
 	// clear from pending clusters to modify
 	for ( const Fat16ClusterMod& clusterMod : entry.getClustersToModifyRef() )
