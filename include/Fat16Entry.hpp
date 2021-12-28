@@ -59,6 +59,7 @@ class Fat16Entry
 		Fat16Entry (uint8_t* offset);
 		Fat16Entry (const std::string& filename, const std::string& extension);
 		Fat16Entry (const Fat16Entry& other);
+		void operator= (const Fat16Entry& other);
 		~Fat16Entry();
 
 		void setToDeleted();

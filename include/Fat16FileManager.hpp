@@ -11,10 +11,12 @@
 
 #include <set>
 
+class IAllocator;
+
 class Fat16FileManager : public IFatFileManager
 {
 	public:
-		Fat16FileManager (IStorageMedia& storageMedia);
+		Fat16FileManager (IStorageMedia& storageMedia, IAllocator* fatCacheAllocator = nullptr);
 		~Fat16FileManager() override;
 
 		// This function places the 'cursor' on a given directory and returns the selected entry. If a subdirectory is selected
@@ -44,8 +46,10 @@ class Fat16FileManager : public IFatFileManager
 		void changePartition (unsigned int partitionNum) override;
 
 	private:
+		IAllocator* 			m_Allocator;
 		unsigned int 			m_FatOffset;
-		SharedData<uint8_t> 		m_FatCached;
+		SharedData<uint8_t> 		m_FatCachedSharedData;
+		uint8_t* 			m_FatCachedPtr;
 		unsigned int 			m_RootDirectoryOffset;
 		unsigned int 			m_DataOffset;
 		unsigned int 			m_CurrentDirOffset;

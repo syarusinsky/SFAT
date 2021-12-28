@@ -2,10 +2,20 @@
 
 #include <algorithm>
 
-Fat16FileManager::Fat16FileManager (IStorageMedia& storageMedia) :
+#include "IAllocator.hpp"
+
+// strictly for allocator
+struct FAT_CACHED_MAX
+{
+	uint8_t data[122880];
+};
+
+Fat16FileManager::Fat16FileManager (IStorageMedia& storageMedia, IAllocator* fatCacheAllocator) :
 	IFatFileManager( storageMedia ),
+	m_Allocator( fatCacheAllocator ),
 	m_FatOffset( 0 ),
-	m_FatCached( SharedData<uint8_t>::MakeSharedData(1) ),
+	m_FatCachedSharedData( SharedData<uint8_t>::MakeSharedDataNull() ),
+	m_FatCachedPtr( nullptr ),
 	m_RootDirectoryOffset( 0 ),
 	m_DataOffset( 0 ),
 	m_CurrentDirOffset( 0 ),
@@ -22,8 +32,30 @@ Fat16FileManager::Fat16FileManager (IStorageMedia& storageMedia) :
 
 		m_FatOffset = ( partitionOffset + m_ActiveBootSector->getNumReservedSectors() ) * m_ActiveBootSector->getSectorSizeInBytes();
 
-		m_FatCached = m_StorageMedia.readFromMedia( m_ActiveBootSector->getNumSectorsPerFat() * m_ActiveBootSector->getSectorSizeInBytes(),
-								m_FatOffset );
+		if ( m_Allocator )
+		{
+			m_FatCachedPtr = reinterpret_cast<uint8_t*>( m_Allocator->allocate<FAT_CACHED_MAX>() );
+
+			// write each sector of the fat to the memory the allocator points to
+			for ( unsigned int sector = 0; sector < m_ActiveBootSector->getNumSectorsPerFat(); sector++ )
+			{
+				m_FatCachedSharedData = m_StorageMedia.readFromMedia( m_ActiveBootSector->getSectorSizeInBytes(),
+											(sector * m_ActiveBootSector->getSectorSizeInBytes())
+											+ m_FatOffset );
+
+				unsigned int sectorOffset = sector * m_ActiveBootSector->getSectorSizeInBytes();
+				for ( unsigned int byte = 0; byte < m_ActiveBootSector->getSectorSizeInBytes(); byte++ )
+				{
+					m_FatCachedPtr[sectorOffset + byte] = m_FatCachedSharedData[byte];
+				}
+			}
+		}
+		else
+		{
+			m_FatCachedSharedData = m_StorageMedia.readFromMedia( m_ActiveBootSector->getNumSectorsPerFat()
+										* m_ActiveBootSector->getSectorSizeInBytes(), m_FatOffset );
+			m_FatCachedPtr = &m_FatCachedSharedData[0];
+		}
 
 		// make the current entry offset the root directory offset and load the current entry sector with root directory entries
 		m_RootDirectoryOffset = m_FatOffset + ( (m_ActiveBootSector->getNumFats() * m_ActiveBootSector->getNumSectorsPerFat() ) *
@@ -105,15 +137,21 @@ bool Fat16FileManager::deleteEntry (unsigned int entryNum)
 
 	entry.setToDeleted();
 
+	// to store the affected sectors numbers of the fat
+	std::set<unsigned int> fatAffectedSectors;
+
 	// set the cluster chain to unused
 	uint16_t cluster = entry.getStartingClusterNum();
 	while ( cluster != FAT16_END_OF_FILE_CLUSTER
 			&& cluster != FAT16_BAD_CLUSTER
 			&& cluster != FAT16_RESERVED_CLUSTER )
 	{
+		// store affected sector of fat
+		fatAffectedSectors.insert( (sizeof(uint16_t) * cluster) / m_ActiveBootSector->getSectorSizeInBytes() );
+
 		// look up the next cluster in the FAT
-		uint8_t* prevClusterByte1 = &m_FatCached[sizeof(uint16_t) * cluster];
-		uint8_t* prevClusterByte2 = &m_FatCached[sizeof(uint16_t) * cluster + 1];
+		uint8_t* prevClusterByte1 = &m_FatCachedPtr[sizeof(uint16_t) * cluster];
+		uint8_t* prevClusterByte2 = &m_FatCachedPtr[sizeof(uint16_t) * cluster + 1];
 		uint16_t prevCluster = *prevClusterByte1 | ( *prevClusterByte2 << 8 );
 		cluster = prevCluster;
 
@@ -124,20 +162,36 @@ bool Fat16FileManager::deleteEntry (unsigned int entryNum)
 
 	// write entry back
 	SharedData<uint8_t> entryData = SharedData<uint8_t>::MakeSharedData( FAT16_ENTRY_SIZE );
-	unsigned int bytesWritten = 0;
 	const uint8_t* underlyingData = entry.getUnderlyingData();
 	for ( unsigned int byte = 0; byte < FAT16_ENTRY_SIZE; byte++ )
 	{
-		entryData[bytesWritten] = underlyingData[byte];
-		bytesWritten++;
+		entryData[byte] = underlyingData[byte];
 	}
 
 	m_StorageMedia.writeToMedia( entryData, m_CurrentDirOffset + (entryNum * FAT16_ENTRY_SIZE) );
 
 	// write FATs back (second for redundancy)
-	m_StorageMedia.writeToMedia( m_FatCached, m_FatOffset );
-	m_StorageMedia.writeToMedia( m_FatCached, m_FatOffset
-							+ (m_ActiveBootSector->getNumSectorsPerFat() * m_ActiveBootSector->getSectorSizeInBytes()) );
+	unsigned int secondFatOffset = m_ActiveBootSector->getNumSectorsPerFat() * m_ActiveBootSector->getSectorSizeInBytes();
+	if ( m_Allocator )
+	{
+		// write back each of the affected sectors to the storage media
+		for ( const unsigned int affectedSector : fatAffectedSectors )
+		{
+			unsigned int sectorOffset = affectedSector * m_ActiveBootSector->getSectorSizeInBytes();
+			for ( unsigned int byte = 0; byte < m_ActiveBootSector->getSectorSizeInBytes(); byte++ )
+			{
+				m_FatCachedSharedData[byte] = m_FatCachedPtr[sectorOffset + byte];
+			}
+
+			m_StorageMedia.writeToMedia( m_FatCachedSharedData, m_FatOffset + sectorOffset );
+			m_StorageMedia.writeToMedia( m_FatCachedSharedData, m_FatOffset + secondFatOffset + sectorOffset );
+		}
+	}
+	else
+	{
+		m_StorageMedia.writeToMedia( m_FatCachedSharedData, m_FatOffset );
+		m_StorageMedia.writeToMedia( m_FatCachedSharedData, m_FatOffset + secondFatOffset );
+	}
 
 	return true;
 }
@@ -216,8 +270,8 @@ SharedData<uint8_t> Fat16FileManager::getSelectedFileNextSector (Fat16Entry& ent
 			currentFileSector = 0;
 
 			// look up the next cluster in the FAT
-			uint8_t* nextClusterByte1 = &m_FatCached[sizeof(uint16_t) * currentFileCluster];
-			uint8_t* nextClusterByte2 = &m_FatCached[sizeof(uint16_t) * currentFileCluster + 1];
+			uint8_t* nextClusterByte1 = &m_FatCachedPtr[sizeof(uint16_t) * currentFileCluster];
+			uint8_t* nextClusterByte2 = &m_FatCachedPtr[sizeof(uint16_t) * currentFileCluster + 1];
 			uint16_t nextCluster = *nextClusterByte1 | ( *nextClusterByte2 << 8 );
 
 			currentFileCluster = nextCluster;
@@ -278,8 +332,8 @@ bool Fat16FileManager::createEntry (Fat16Entry& entry)
 	unsigned int numClustersInFat = ( m_ActiveBootSector->getNumSectorsPerFat() * m_ActiveBootSector->getSectorSizeInBytes() ) / 2;
 	for ( unsigned int clusterNum = 2; clusterNum < numClustersInFat - 2; clusterNum++ )
 	{
-		uint8_t* clusterValByte1 = &m_FatCached[sizeof(uint16_t) * clusterNum];
-		uint8_t* clusterValByte2 = &m_FatCached[sizeof(uint16_t) * clusterNum + 1];
+		uint8_t* clusterValByte1 = &m_FatCachedPtr[sizeof(uint16_t) * clusterNum];
+		uint8_t* clusterValByte2 = &m_FatCachedPtr[sizeof(uint16_t) * clusterNum + 1];
 		uint16_t clusterVal = *clusterValByte1 | ( *clusterValByte2 << 8 );
 
 		if ( ! m_PendingClustersToModify.count(clusterNum) && clusterVal == FAT16_FREE_CLUSTER )
@@ -359,8 +413,8 @@ bool Fat16FileManager::writeToEntry (Fat16Entry& entry, const SharedData<uint8_t
 
 			for ( unsigned int clusterNum = clusterModVec.back().clusterNum + 1; clusterNum < numClustersInFat - 2; clusterNum++ )
 			{
-				uint8_t* clusterValByte1 = &m_FatCached[sizeof(uint16_t) * clusterNum];
-				uint8_t* clusterValByte2 = &m_FatCached[sizeof(uint16_t) * clusterNum + 1];
+				uint8_t* clusterValByte1 = &m_FatCachedPtr[sizeof(uint16_t) * clusterNum];
+				uint8_t* clusterValByte2 = &m_FatCachedPtr[sizeof(uint16_t) * clusterNum + 1];
 				uint16_t clusterVal = *clusterValByte1 | ( *clusterValByte2 << 8 );
 
 				if ( ! m_PendingClustersToModify.count(clusterNum) && clusterVal == FAT16_FREE_CLUSTER )
@@ -461,7 +515,7 @@ bool Fat16FileManager::finalizeEntry (Fat16Entry& entry)
 	// write entry back
 	SharedData<uint8_t> entryData = SharedData<uint8_t>::MakeSharedData( FAT16_ENTRY_SIZE );
 	unsigned int bytesWritten = 0;
-	const uint8_t* underlyingData = entryToModify->getUnderlyingData();
+	const uint8_t* underlyingData = entry.getUnderlyingData();
 	for ( unsigned int byte = 0; byte < FAT16_ENTRY_SIZE; byte++ )
 	{
 		entryData[bytesWritten] = underlyingData[byte];
@@ -470,22 +524,45 @@ bool Fat16FileManager::finalizeEntry (Fat16Entry& entry)
 
 	m_StorageMedia.writeToMedia( entryData, entryDirOffset + (entryToModifyNum * FAT16_ENTRY_SIZE) );
 
+	// to store the affected sectors numbers of the fat
+	std::set<unsigned int> fatAffectedSectors;
+
 	// apply changes to fat
 	for ( const Fat16ClusterMod& clusterMod : entry.getClustersToModifyRef() )
 	{
-		uint8_t* clusterValByte1 = &m_FatCached[sizeof(uint16_t) * clusterMod.clusterNum];
-		uint8_t* clusterValByte2 = &m_FatCached[sizeof(uint16_t) * clusterMod.clusterNum + 1];
+		// store affected sector of fat
+		fatAffectedSectors.insert( (sizeof(uint16_t) * clusterMod.clusterNum) / m_ActiveBootSector->getSectorSizeInBytes() );
+
+		uint8_t* clusterValByte1 = &m_FatCachedPtr[sizeof(uint16_t) * clusterMod.clusterNum];
+		uint8_t* clusterValByte2 = &m_FatCachedPtr[sizeof(uint16_t) * clusterMod.clusterNum + 1];
 		*clusterValByte1 = ( clusterMod.clusterNewVal & 0x00FF );
 		*clusterValByte2 = ( clusterMod.clusterNewVal & 0xFF00 ) >> 8;
 	}
 
-	// write fats back (second for redundancy)
-	m_StorageMedia.writeToMedia( m_FatCached, m_FatOffset );
-	m_StorageMedia.writeToMedia( m_FatCached, m_FatOffset
-					+ (m_ActiveBootSector->getNumSectorsPerFat() * m_ActiveBootSector->getSectorSizeInBytes()) );
+	// write FATs back (second for redundancy)
+	unsigned int secondFatOffset = m_ActiveBootSector->getNumSectorsPerFat() * m_ActiveBootSector->getSectorSizeInBytes();
+	if ( m_Allocator )
+	{
+		// write back each of the affected sectors to the storage media
+		for ( const unsigned int affectedSector : fatAffectedSectors )
+		{
+			unsigned int sectorOffset = affectedSector * m_ActiveBootSector->getSectorSizeInBytes();
+			for ( unsigned int byte = 0; byte < m_ActiveBootSector->getSectorSizeInBytes(); byte++ )
+			{
+				m_FatCachedSharedData[byte] = m_FatCachedPtr[sectorOffset + byte];
+			}
+
+			m_StorageMedia.writeToMedia( m_FatCachedSharedData, m_FatOffset + sectorOffset );
+			m_StorageMedia.writeToMedia( m_FatCachedSharedData, m_FatOffset + secondFatOffset + sectorOffset );
+		}
+	}
+	else
+	{
+		m_StorageMedia.writeToMedia( m_FatCachedSharedData, m_FatOffset );
+		m_StorageMedia.writeToMedia( m_FatCachedSharedData, m_FatOffset + secondFatOffset );
+	}
 
 	this->endFileTransfer( entry );
-	this->endFileTransfer( *entryToModify );
 
 	// write change to cached current directory entries if file exists in the current directory
 	if ( entryIsInCurrentDirectory )

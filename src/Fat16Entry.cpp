@@ -124,6 +124,42 @@ Fat16Entry::Fat16Entry (const Fat16Entry& other) :
 	}
 }
 
+void Fat16Entry::operator= (const Fat16Entry& other)
+{
+	for ( unsigned int byte = 0; byte < FAT16_ENTRY_SIZE; byte++ )
+	{
+		m_UnderlyingData[byte] = other.m_UnderlyingData[byte];
+	}
+
+	for ( unsigned int byte = 0; byte < FAT16_FILENAME_SIZE; byte++ )
+	{
+		m_Filename[byte] = other.m_Filename[byte];
+	}
+
+	for ( unsigned int byte = 0; byte < FAT16_EXTENSION_SIZE; byte++ )
+	{
+		m_Extension[byte] = other.m_Extension[byte];
+	}
+
+	for ( unsigned int byte = 0; byte < FAT16_FILENAME_SIZE + FAT16_EXTENSION_SIZE + 2; byte++ ) // plus 2 for . and string terminator
+	{
+		m_FilenameWithExtension[byte] = other.m_FilenameWithExtension[byte];
+	}
+
+	m_FileAttributes = other.m_FileAttributes;
+	m_TimeLastUpdated = other.m_TimeLastUpdated;
+	m_DateLastUpdated = other.m_DateLastUpdated;
+	m_StartingClusterNum = other.m_StartingClusterNum;
+	m_FileSizeInBytes = other.m_FileSizeInBytes;
+	m_IsInvalidEntry = other.m_IsInvalidEntry;
+	m_FileTransferInProgress = false;
+	m_CurrentFileSector = 0;
+	m_CurrentFileCluster = 0;
+	m_CurrentDirOffset = 0;
+	m_CurrentFileOffset = 0;
+	m_ClustersToModify.clear();
+}
+
 Fat16Entry::~Fat16Entry()
 {
 }
