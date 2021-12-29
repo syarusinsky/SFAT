@@ -62,14 +62,8 @@ Fat16FileManager::Fat16FileManager (IStorageMedia& storageMedia, IAllocator* fat
 						m_ActiveBootSector->getSectorSizeInBytes() );
 		m_CurrentDirOffset = m_RootDirectoryOffset;
 
-		SharedData<uint8_t> entries = m_StorageMedia.readFromMedia( FAT16_ENTRY_SIZE * m_ActiveBootSector->getNumDirectoryEntriesInRoot(),
-								m_RootDirectoryOffset );
-		// fill directory entries vector
-		uint8_t* entriesPtr = entries.getPtr();
-		for ( unsigned int entry = 0; entry < m_ActiveBootSector->getNumDirectoryEntriesInRoot(); entry++ )
-		{
-			m_CurrentDirectoryEntries.push_back( Fat16Entry(&entriesPtr[entry * FAT16_ENTRY_SIZE]) );
-		}
+		this->writeDirectoryEntriesToVec( m_CurrentDirectoryEntries, m_RootDirectoryOffset,
+							m_ActiveBootSector->getNumDirectoryEntriesInRoot() );
 
 		m_DataOffset = m_RootDirectoryOffset + ( m_ActiveBootSector->getNumDirectoryEntriesInRoot() * FAT16_ENTRY_SIZE );
 	}
@@ -81,39 +75,27 @@ Fat16FileManager::~Fat16FileManager()
 
 Fat16Entry Fat16FileManager::selectEntry (unsigned int entryNum)
 {
-	Fat16Entry entry( m_CurrentDirectoryEntries.at(entryNum) );
+	Fat16Entry entry( *m_CurrentDirectoryEntries.at(entryNum) );
 
 	if ( entry.isRootDirectory() )
 	{
-		m_CurrentDirectoryEntries.clear();
+		this->freeDirectoryEntriesInVecAndClear( m_CurrentDirectoryEntries );
 
 		m_CurrentDirOffset = m_RootDirectoryOffset;
 
-		SharedData<uint8_t> entries = m_StorageMedia.readFromMedia( FAT16_ENTRY_SIZE * m_ActiveBootSector->getNumDirectoryEntriesInRoot(),
-								m_RootDirectoryOffset );
-		// fill directory entries vector
-		uint8_t* entriesPtr = entries.getPtr();
-		for ( unsigned int entry = 0; entry < m_ActiveBootSector->getNumDirectoryEntriesInRoot(); entry++ )
-		{
-			m_CurrentDirectoryEntries.push_back( Fat16Entry(&entriesPtr[entry * FAT16_ENTRY_SIZE]) );
-		}
+		this->writeDirectoryEntriesToVec( m_CurrentDirectoryEntries, m_RootDirectoryOffset,
+							m_ActiveBootSector->getNumDirectoryEntriesInRoot() );
 	}
 	else if ( entry.isSubdirectory() )
 	{
 		// TODO need to account for big directories where one sector isn't enough to hold them
 
-		m_CurrentDirectoryEntries.clear();
+		this->freeDirectoryEntriesInVecAndClear( m_CurrentDirectoryEntries );
 
 		m_CurrentDirOffset = m_DataOffset + ( (entry.getStartingClusterNum() - 2) *
 						m_ActiveBootSector->getNumSectorsPerCluster() * m_ActiveBootSector->getSectorSizeInBytes() );
 
-		SharedData<uint8_t> entries = m_StorageMedia.readFromMedia( m_ActiveBootSector->getSectorSizeInBytes(), m_CurrentDirOffset );
-		// fill directory entries vector
-		uint8_t* entriesPtr = entries.getPtr();
-		for ( unsigned int entry = 0; entry < m_ActiveBootSector->getNumDirectoryEntriesInRoot(); entry++ )
-		{
-			m_CurrentDirectoryEntries.push_back( Fat16Entry(&entriesPtr[entry * FAT16_ENTRY_SIZE]) );
-		}
+		this->writeDirectoryEntriesToVec( m_CurrentDirectoryEntries, m_CurrentDirOffset, m_ActiveBootSector->getSectorSizeInBytes() );
 	}
 
 	return entry;
@@ -123,7 +105,7 @@ bool Fat16FileManager::deleteEntry (unsigned int entryNum)
 {
 	if ( entryNum >= m_ActiveBootSector->getNumDirectoryEntriesInRoot() ) return false;
 
-	Fat16Entry& entry( m_CurrentDirectoryEntries.at(entryNum) );
+	Fat16Entry& entry( *m_CurrentDirectoryEntries.at(entryNum) );
 
 	if ( entry.isRootDirectory() ) return false;
 	else if ( entry.isSubdirectory() ) return false; // TODO eventually implement subdirectory deleting
@@ -160,38 +142,9 @@ bool Fat16FileManager::deleteEntry (unsigned int entryNum)
 		*prevClusterByte2 = ( FAT16_FREE_CLUSTER & 0xFF00 ) >> 8;
 	}
 
-	// write entry back
-	SharedData<uint8_t> entryData = SharedData<uint8_t>::MakeSharedData( FAT16_ENTRY_SIZE );
-	const uint8_t* underlyingData = entry.getUnderlyingData();
-	for ( unsigned int byte = 0; byte < FAT16_ENTRY_SIZE; byte++ )
-	{
-		entryData[byte] = underlyingData[byte];
-	}
+	this->writeEntryToStorageMedia( entry, m_CurrentDirOffset, entryNum );
 
-	m_StorageMedia.writeToMedia( entryData, m_CurrentDirOffset + (entryNum * FAT16_ENTRY_SIZE) );
-
-	// write FATs back (second for redundancy)
-	unsigned int secondFatOffset = m_ActiveBootSector->getNumSectorsPerFat() * m_ActiveBootSector->getSectorSizeInBytes();
-	if ( m_Allocator )
-	{
-		// write back each of the affected sectors to the storage media
-		for ( const unsigned int affectedSector : fatAffectedSectors )
-		{
-			unsigned int sectorOffset = affectedSector * m_ActiveBootSector->getSectorSizeInBytes();
-			for ( unsigned int byte = 0; byte < m_ActiveBootSector->getSectorSizeInBytes(); byte++ )
-			{
-				m_FatCachedSharedData[byte] = m_FatCachedPtr[sectorOffset + byte];
-			}
-
-			m_StorageMedia.writeToMedia( m_FatCachedSharedData, m_FatOffset + sectorOffset );
-			m_StorageMedia.writeToMedia( m_FatCachedSharedData, m_FatOffset + secondFatOffset + sectorOffset );
-		}
-	}
-	else
-	{
-		m_StorageMedia.writeToMedia( m_FatCachedSharedData, m_FatOffset );
-		m_StorageMedia.writeToMedia( m_FatCachedSharedData, m_FatOffset + secondFatOffset );
-	}
+	this->writeFatsBack( fatAffectedSectors );
 
 	return true;
 }
@@ -203,9 +156,9 @@ bool Fat16FileManager::readEntry (Fat16Entry& entry)
 	// ensure this file exists in the current directory
 	bool foundEntry = false;
 	const uint8_t* underlyingData = entry.getUnderlyingData();
-	for ( const Fat16Entry& listEntry : m_CurrentDirectoryEntries )
+	for ( const Fat16Entry* listEntry : m_CurrentDirectoryEntries )
 	{
-		const uint8_t* listEntryUnderlyingData = listEntry.getUnderlyingData();
+		const uint8_t* listEntryUnderlyingData = listEntry->getUnderlyingData();
 		bool isEqual = true;
 		for ( unsigned int byte = 0; byte < FAT16_ENTRY_SIZE; byte++ )
 		{
@@ -309,18 +262,12 @@ void Fat16FileManager::changePartition (unsigned int partitionNum)
 						m_ActiveBootSector->getNumFats() * m_ActiveBootSector->getNumSectorsPerFat() ) *
 						m_ActiveBootSector->getSectorSizeInBytes();
 
-		m_CurrentDirectoryEntries.clear();
+		this->freeDirectoryEntriesInVecAndClear( m_CurrentDirectoryEntries );
 
 		m_CurrentDirOffset = m_RootDirectoryOffset;
 
-		SharedData<uint8_t> entries = m_StorageMedia.readFromMedia( FAT16_ENTRY_SIZE * m_ActiveBootSector->getNumDirectoryEntriesInRoot(),
-									m_RootDirectoryOffset );
-		// fill directory entries vector
-		uint8_t* entriesPtr = entries.getPtr();
-		for ( unsigned int entry = 0; entry < m_ActiveBootSector->getNumDirectoryEntriesInRoot(); entry++ )
-		{
-			m_CurrentDirectoryEntries.push_back( Fat16Entry(&entriesPtr[entry * FAT16_ENTRY_SIZE]) );
-		}
+		this->writeDirectoryEntriesToVec( m_CurrentDirectoryEntries, m_RootDirectoryOffset,
+							m_ActiveBootSector->getNumDirectoryEntriesInRoot() );
 	}
 }
 
@@ -473,19 +420,13 @@ bool Fat16FileManager::writeToEntry (Fat16Entry& entry, const SharedData<uint8_t
 bool Fat16FileManager::finalizeEntry (Fat16Entry& entry)
 {
 	const unsigned int& entryDirOffset = entry.getCurrentDirOffsetRef();
-	std::vector<Fat16Entry> entriesInDir;
+	std::vector<Fat16Entry*> entriesInDir;
 	bool entryIsInCurrentDirectory = false;
 
 	// load directory entries in other directory if necessary
 	if ( entryDirOffset != m_CurrentDirOffset )
 	{
-		SharedData<uint8_t> entries = m_StorageMedia.readFromMedia( m_ActiveBootSector->getSectorSizeInBytes(), entryDirOffset );
-		// fill directory entries vector
-		uint8_t* entriesPtr = entries.getPtr();
-		for ( unsigned int entry = 0; entry < m_ActiveBootSector->getNumDirectoryEntriesInRoot(); entry++ )
-		{
-			entriesInDir.push_back( Fat16Entry(&entriesPtr[entry * FAT16_ENTRY_SIZE]) );
-		}
+		this->writeDirectoryEntriesToVec( entriesInDir, entryDirOffset, m_ActiveBootSector->getSectorSizeInBytes() );
 	}
 	else // else just use current directory entries
 	{
@@ -498,7 +439,7 @@ bool Fat16FileManager::finalizeEntry (Fat16Entry& entry)
 	unsigned int entryToModifyNum = 0;
 	for ( unsigned int entryNum = 0; entryNum < m_ActiveBootSector->getNumDirectoryEntriesInRoot(); entryNum++ )
 	{
-		Fat16Entry& entry( entriesInDir.at(entryNum) );
+		Fat16Entry& entry( *entriesInDir.at(entryNum) );
 		if ( entry.isUnusedEntry() || entry.isDeletedEntry() )
 		{
 			entryToModify = &entry;
@@ -512,17 +453,7 @@ bool Fat16FileManager::finalizeEntry (Fat16Entry& entry)
 
 	*entryToModify = entry;
 
-	// write entry back
-	SharedData<uint8_t> entryData = SharedData<uint8_t>::MakeSharedData( FAT16_ENTRY_SIZE );
-	unsigned int bytesWritten = 0;
-	const uint8_t* underlyingData = entry.getUnderlyingData();
-	for ( unsigned int byte = 0; byte < FAT16_ENTRY_SIZE; byte++ )
-	{
-		entryData[bytesWritten] = underlyingData[byte];
-		bytesWritten++;
-	}
-
-	m_StorageMedia.writeToMedia( entryData, entryDirOffset + (entryToModifyNum * FAT16_ENTRY_SIZE) );
+	this->writeEntryToStorageMedia( entry, entryDirOffset, entryToModifyNum );
 
 	// to store the affected sectors numbers of the fat
 	std::set<unsigned int> fatAffectedSectors;
@@ -539,6 +470,99 @@ bool Fat16FileManager::finalizeEntry (Fat16Entry& entry)
 		*clusterValByte2 = ( clusterMod.clusterNewVal & 0xFF00 ) >> 8;
 	}
 
+	this->writeFatsBack( fatAffectedSectors );
+
+	this->endFileTransfer( entry );
+
+	// write change to cached current directory entries if file exists in the current directory
+	if ( entryIsInCurrentDirectory )
+	{
+		*m_CurrentDirectoryEntries.at( entryToModifyNum ) = *entryToModify;
+	}
+	else // otherwise make sure entriesInDir memory is cleaned up
+	{
+		this->freeDirectoryEntriesInVecAndClear( entriesInDir );
+	}
+
+	return true;
+}
+
+void Fat16FileManager::endFileTransfer (Fat16Entry& entry)
+{
+	// clear any clusters that were to be modified in the fat and end any previous write or read process
+	entry.getFileTransferInProgressFlagRef() = false;
+	entry.getCurrentFileSectorRef() = 0;
+	entry.getCurrentFileClusterRef() = entry.getStartingClusterNum();
+	entry.getCurrentFileOffsetRef() = 0;
+	entry.getNumBytesReadRef() = 0;
+
+	// clear from pending clusters to modify
+	for ( const Fat16ClusterMod& clusterMod : entry.getClustersToModifyRef() )
+	{
+		m_PendingClustersToModify.erase( clusterMod.clusterNum );
+	}
+
+	entry.getClustersToModifyRef().clear();
+}
+
+void Fat16FileManager::writeDirectoryEntriesToVec (std::vector<Fat16Entry*>& vec, unsigned int directoryOffset, unsigned int numDirectoryEntries)
+{
+	SharedData<uint8_t> entries = m_StorageMedia.readFromMedia( FAT16_ENTRY_SIZE * numDirectoryEntries, directoryOffset );
+
+	// fill directory entries vector
+	uint8_t* entriesPtr = entries.getPtr();
+	if ( m_Allocator )
+	{
+		for ( unsigned int entry = 0; entry < numDirectoryEntries; entry++ )
+		{
+			vec.push_back( m_Allocator->allocate<Fat16Entry>(&entriesPtr[entry * FAT16_ENTRY_SIZE]) );
+		}
+	}
+	else
+	{
+		for ( unsigned int entry = 0; entry < numDirectoryEntries; entry++ )
+		{
+			vec.push_back( new Fat16Entry(&entriesPtr[entry * FAT16_ENTRY_SIZE]) );
+		}
+	}
+}
+
+void Fat16FileManager::freeDirectoryEntriesInVecAndClear (std::vector<Fat16Entry*>& vec)
+{
+	// free directory entries and clear
+	if ( m_Allocator )
+	{
+		for ( Fat16Entry* entryPtr : vec )
+		{
+			m_Allocator->free<Fat16Entry>( entryPtr );
+		}
+	}
+	else
+	{
+		for ( Fat16Entry* entryPtr : vec )
+		{
+			delete entryPtr;
+		}
+	}
+
+	vec.clear();
+}
+
+void Fat16FileManager::writeEntryToStorageMedia (const Fat16Entry& entry, unsigned int directoryOffset, unsigned int entryNum)
+{
+	const unsigned int offset =  directoryOffset + (entryNum * FAT16_ENTRY_SIZE);
+	SharedData<uint8_t> entryData = SharedData<uint8_t>::MakeSharedData( FAT16_ENTRY_SIZE );
+	const uint8_t* underlyingData = entry.getUnderlyingData();
+	for ( unsigned int byte = 0; byte < FAT16_ENTRY_SIZE; byte++ )
+	{
+		entryData[byte] = underlyingData[byte];
+	}
+
+	m_StorageMedia.writeToMedia( entryData, offset );
+}
+
+void Fat16FileManager::writeFatsBack (std::set<unsigned int> fatAffectedSectors)
+{
 	// write FATs back (second for redundancy)
 	unsigned int secondFatOffset = m_ActiveBootSector->getNumSectorsPerFat() * m_ActiveBootSector->getSectorSizeInBytes();
 	if ( m_Allocator )
@@ -561,32 +585,4 @@ bool Fat16FileManager::finalizeEntry (Fat16Entry& entry)
 		m_StorageMedia.writeToMedia( m_FatCachedSharedData, m_FatOffset );
 		m_StorageMedia.writeToMedia( m_FatCachedSharedData, m_FatOffset + secondFatOffset );
 	}
-
-	this->endFileTransfer( entry );
-
-	// write change to cached current directory entries if file exists in the current directory
-	if ( entryIsInCurrentDirectory )
-	{
-		m_CurrentDirectoryEntries.at( entryToModifyNum ) = *entryToModify;
-	}
-
-	return true;
-}
-
-void Fat16FileManager::endFileTransfer (Fat16Entry& entry)
-{
-	// clear any clusters that were to be modified in the fat and end any previous write or read process
-	entry.getFileTransferInProgressFlagRef() = false;
-	entry.getCurrentFileSectorRef() = 0;
-	entry.getCurrentFileClusterRef() = entry.getStartingClusterNum();
-	entry.getCurrentFileOffsetRef() = 0;
-	entry.getNumBytesReadRef() = 0;
-
-	// clear from pending clusters to modify
-	for ( const Fat16ClusterMod& clusterMod : entry.getClustersToModifyRef() )
-	{
-		m_PendingClustersToModify.erase( clusterMod.clusterNum );
-	}
-
-	entry.getClustersToModifyRef().clear();
 }

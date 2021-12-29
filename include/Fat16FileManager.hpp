@@ -36,7 +36,7 @@ class Fat16FileManager : public IFatFileManager
 		// returns false if there are no available entries in directory, true if successful
 		bool finalizeEntry(Fat16Entry& entry);
 
-		std::vector<Fat16Entry>& getCurrentDirectoryEntries() { return m_CurrentDirectoryEntries; }
+		std::vector<Fat16Entry*>& getCurrentDirectoryEntries() { return m_CurrentDirectoryEntries; }
 
 		// The order of file reading operations are readEntry -> getSelectedFileNextSector(xHoweverManyTimes)
 		// returns true if entry is readable file and read process has begun, false if fail
@@ -53,13 +53,18 @@ class Fat16FileManager : public IFatFileManager
 		unsigned int 			m_RootDirectoryOffset;
 		unsigned int 			m_DataOffset;
 		unsigned int 			m_CurrentDirOffset;
-		std::vector<Fat16Entry> 	m_CurrentDirectoryEntries;
+		std::vector<Fat16Entry*> 	m_CurrentDirectoryEntries;
 
 		std::set<uint16_t> 		m_PendingClustersToModify;
 
 		bool writeToEntry (Fat16Entry& entry, const SharedData<uint8_t>& data, bool flush);
 
 		void endFileTransfer (Fat16Entry& entry);
+
+		void writeEntryToStorageMedia (const Fat16Entry& entry, unsigned int directoryOffset, unsigned int entryNum);
+		void writeDirectoryEntriesToVec (std::vector<Fat16Entry*>& vec, unsigned int directoryOffset, unsigned int numDirectoryEntries);
+		void freeDirectoryEntriesInVecAndClear (std::vector<Fat16Entry*>& vec);
+		void writeFatsBack (std::set<unsigned int> fatAffectedSectors);
 };
 
 #endif // FAT16FILEMANAGER_HPP
