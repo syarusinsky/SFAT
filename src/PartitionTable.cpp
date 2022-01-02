@@ -1,13 +1,21 @@
 #include "PartitionTable.hpp"
 
 PartitionTable::PartitionTable (uint32_t* offset) :
-	m_Bootable( (*offset & 0x000000FF) ),
-	m_StartAddrCHS( (*offset & 0xFFFFFF00) >> 8 ),
-	m_PartitionType( (*(offset + 1) & 0x000000FF) ),
-	m_EndAddrCHS( (*(offset + 1) & 0xFFFFFF00) >> 8 ),
-	m_OffsetLBA( *(offset + 2) ),
-	m_PartitionSize( *(offset + 3) )
+	m_Bootable( 0 ),
+	m_StartAddrCHS( 0 ),
+	m_PartitionType( 0 ),
+	m_EndAddrCHS( 0 ),
+	m_OffsetLBA( 0 ),
+	m_PartitionSize( 0 )
 {
+	uint8_t* data = reinterpret_cast<uint8_t*>( offset );
+
+	m_Bootable = *data;
+	m_StartAddrCHS = ( *(data + 1) ) | ( *(data + 2) << 8 ) | ( *(data + 3) << 16 );
+	m_PartitionType = *( data + 4 );
+	m_EndAddrCHS = ( *(data + 5) ) | ( *(data + 6) << 8 ) | ( *(data + 7) << 16 );
+	m_OffsetLBA = ( *(data + 8) ) | ( *(data + 9) << 8 ) | ( *(data + 10) << 16 ) | ( *(data + 11) << 24 );
+	m_PartitionSize = ( *(data + 12) ) | ( *(data + 13) << 8 ) | ( *(data + 14) << 16 ) | ( *(data + 15) << 24 );
 }
 
 PartitionTable::~PartitionTable()

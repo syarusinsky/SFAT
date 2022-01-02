@@ -2,9 +2,6 @@
 
 #include "PartitionTable.hpp"
 
-// TODO remove this after debugging
-#include <iostream>
-
 IFatFileManager::IFatFileManager (IStorageMedia& storageMedia) :
 	m_StorageMedia( storageMedia ),
 	m_ActivePartitionNum( 0 ),
@@ -38,6 +35,8 @@ IFatFileManager::IFatFileManager (IStorageMedia& storageMedia) :
 				m_ActiveBootSector = new BootSector( bsBuffer.getPtr(), partitionType );
 
 				m_ActivePartitionNum = partition;
+
+				break;
 			}
 		}
 	}
