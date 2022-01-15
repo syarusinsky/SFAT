@@ -20,7 +20,8 @@ Fat16FileManager::Fat16FileManager (IStorageMedia& storageMedia, IAllocator* fat
 	m_DataOffset( 0 ),
 	m_CurrentDirOffset( 0 ),
 	m_CurrentDirectoryEntries(),
-	m_PendingClustersToModify()
+	m_PendingClustersToModify(),
+	m_WriteToEntryBuffer( SharedData<uint8_t>::MakeSharedData(this->getActiveBootSector()->getSectorSizeInBytes()) )
 {
 	if ( this->isValidFatFileSystem() )
 	{
@@ -331,7 +332,6 @@ bool Fat16FileManager::writeToEntry (Fat16Entry& entry, const SharedData<uint8_t
 	unsigned int& currentFileCluster = entry.getCurrentFileClusterRef();
 	unsigned int& currentFileOffset = entry.getCurrentFileOffsetRef();
 
-	SharedData<uint8_t> dataToWrite = SharedData<uint8_t>::MakeSharedData( m_ActiveBootSector->getSectorSizeInBytes() );
 	unsigned int totalBytesToWrite = data.getSizeInBytes();
 	unsigned int bytesWritten = 0;
 
@@ -342,7 +342,7 @@ bool Fat16FileManager::writeToEntry (Fat16Entry& entry, const SharedData<uint8_t
 		unsigned int writeToNumBytes = std::min( static_cast<unsigned int>(m_ActiveBootSector->getSectorSizeInBytes()), bytesLeftToWrite );
 		for ( unsigned int byte = 0; byte < writeToNumBytes; byte++ )
 		{
-			dataToWrite[byte] = data[bytesWritten];
+			m_WriteToEntryBuffer[byte] = data[bytesWritten];
 			bytesWritten++;
 		}
 
@@ -406,7 +406,7 @@ bool Fat16FileManager::writeToEntry (Fat16Entry& entry, const SharedData<uint8_t
 		unsigned int oldFileSize = entry.getFileSizeInBytes();
 		entry.setFileSizeInBytes( oldFileSize + writeToNumBytes );
 
-		m_StorageMedia.writeToMedia( dataToWrite, writeOffset );
+		m_StorageMedia.writeToMedia( m_WriteToEntryBuffer, writeOffset );
 	}
 
 	if ( flush )

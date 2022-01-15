@@ -57,6 +57,8 @@ class Fat16FileManager : public IFatFileManager
 
 		std::set<uint16_t> 		m_PendingClustersToModify;
 
+		SharedData<uint8_t> 		m_WriteToEntryBuffer;
+
 		bool writeToEntry (Fat16Entry& entry, const SharedData<uint8_t>& data, bool flush);
 
 		void endFileTransfer (Fat16Entry& entry);
