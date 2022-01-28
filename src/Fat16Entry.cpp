@@ -96,11 +96,11 @@ Fat16Entry::Fat16Entry (const Fat16Entry& other) :
 	m_StartingClusterNum( other.m_StartingClusterNum ),
 	m_FileSizeInBytes( other.m_FileSizeInBytes ),
 	m_IsInvalidEntry( other.m_IsInvalidEntry ),
-	m_FileTransferInProgress( false ),
-	m_CurrentFileSector( 0 ),
-	m_CurrentFileCluster( 0 ),
-	m_CurrentDirOffset( 0 ),
-	m_CurrentFileOffset( 0 ),
+	m_FileTransferInProgress( other.m_FileTransferInProgress ),
+	m_CurrentFileSector( other.m_CurrentFileSector ),
+	m_CurrentFileCluster( other.m_CurrentFileCluster ),
+	m_CurrentDirOffset( other.m_CurrentDirOffset ),
+	m_CurrentFileOffset( other.m_CurrentFileOffset ),
 	m_ClustersToModify()
 {
 	for ( unsigned int byte = 0; byte < FAT16_ENTRY_SIZE; byte++ )
