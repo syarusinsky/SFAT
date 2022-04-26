@@ -154,33 +154,6 @@ bool Fat16FileManager::readEntry (Fat16Entry& entry)
 {
 	this->endFileTransfer( entry );
 
-	// ensure this file exists in the current directory
-	bool foundEntry = false;
-	const uint8_t* underlyingData = entry.getUnderlyingData();
-	for ( const Fat16Entry* listEntry : m_CurrentDirectoryEntries )
-	{
-		const uint8_t* listEntryUnderlyingData = listEntry->getUnderlyingData();
-		bool isEqual = true;
-		for ( unsigned int byte = 0; byte < FAT16_ENTRY_SIZE; byte++ )
-		{
-			if ( underlyingData[byte] != listEntryUnderlyingData[byte] )
-			{
-				isEqual = false;
-
-				break;
-			}
-		}
-
-		if ( isEqual )
-		{
-			foundEntry = true;
-
-			break;
-		}
-	}
-
-	if ( ! foundEntry ) return false;
-
 	if ( ! entry.isRootDirectory()
 			&& ! entry.isSubdirectory()
 			&& ! entry.isUnusedEntry()
