@@ -74,6 +74,16 @@ Fat16FileManager::~Fat16FileManager()
 {
 }
 
+void Fat16FileManager::returnToRoot()
+{
+	this->freeDirectoryEntriesInVecAndClear( m_CurrentDirectoryEntries );
+
+	m_CurrentDirOffset = m_RootDirectoryOffset;
+
+	this->writeDirectoryEntriesToVec( m_CurrentDirectoryEntries, m_RootDirectoryOffset,
+							m_ActiveBootSector->getNumDirectoryEntriesInRoot() );
+}
+
 Fat16Entry Fat16FileManager::selectEntry (unsigned int entryNum)
 {
 	Fat16Entry entry( *m_CurrentDirectoryEntries.at(entryNum) );

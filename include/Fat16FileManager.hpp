@@ -19,6 +19,9 @@ class Fat16FileManager : public IFatFileManager
 		Fat16FileManager (IStorageMedia& storageMedia, IAllocator* fatCacheAllocator = nullptr);
 		~Fat16FileManager() override;
 
+		// This function returns the 'cursor' to the root directory and repopulates the current directory entries accordingly
+		void returnToRoot();
+
 		// This function places the 'cursor' on a given directory and returns the selected entry. If a subdirectory is selected
 		// the current directory entries are updated.
 		Fat16Entry selectEntry (unsigned int entryNum);
